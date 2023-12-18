@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Pattern Analysis</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        #imageInput {
+            margin-bottom: 20px;
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            display: none; /* Initially hide the canvas */
+        }
+        #results {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fff;
+            display: none; /* Initially hide the results */
+        }
+        .loading-indicator {
+            margin-top: 10px;
+            display: none; /* Initially hide the loading indicator */
+        }
+    </style>
+</head>
+<body>
+    <h2>Upload an Image for Pattern Analysis</h2>
+    <p>Select an image and the system will analyze patterns in the image.</p>
+    <input type="file" id="imageInput" accept="image/*">
+    <div class="loading-indicator">Processing...</div>
+    <canvas id="canvas"></canvas>
+    <div id="results"></div>
+
+    <script src="jsfeat-min.js"></script>
+    <script>
+        document.getElementById('imageInput').addEventListener('change', function(event) {
+            if (event.target.files.length === 0) {
+                return; // No file selected
+            }
+
+            let canvas = document.getElementById('canvas');
+            let ctx = canvas.getContext('2d');
+            let reader = new FileReader();
+
+            toggleLoadingIndicator(true); // Show loading indicator
+
+            reader.onload = function(event) {
+                let img = new Image();
+                img.onload = function() {
+                    try {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        processImageWithJsFeat(ctx, canvas);
+                        toggleCanvasAndResults(true); // Show canvas and results
+                    } catch (error) {
+                        console.error("Error processing image:", error);
+                        alert("Error processing image.");
+                    } finally {
+                        toggleLoadingIndicator(false); // Hide loading indicator
+                    }
+                };
+                img.src = event.target.result;
+            };
+
+            reader.readAsDataURL(event.target.files[0]);
+        });
+
+        function processImageWithJsFeat(ctx, canvas) {
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            var gray = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+            jsfeat.imgproc.grayscale(imageData.data, gray.data);
+
+            var edges = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+            var r = 2; // radius
+            var kernel_size = (r+1) << 1;
+            jsfeat.imgproc.gaussian_blur(gray, edges, kernel_size, 0);
+            jsfeat.imgproc.canny(edges, edges, 10, 50); // lower and upper threshold for edge detection
+
+            // Render edges back to canvas in different colors
+            var data_u32 = new Uint32Array(imageData.data.buffer);
+            var alpha = (0xff << 24);
+            var i = canvas.width * canvas.height;
+            var colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00]; // red, green, blue, yellow
+            var colorIdx = 0;
+
+            while(--i >= 0) {
+                if (edges.data[i] > 0) {
+                    data_u32[i] = alpha | colors[colorIdx];
+                    colorIdx = (colorIdx + 1) % colors.length; // Cycle through colors
+                } else {
+                    data_u32[i] = imageData.data[i * 4] | (imageData.data[i * 4 + 1] << 8) | (imageData.data[i * 4 + 2] << 16) | alpha;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            displayResults();
+        }
+
+        function displayResults() {
+            var resultsText = "Pattern analysis complete. See canvas for details.";
+            document.getElementById('results').innerText = resultsText;
+        }
+
+        function toggleLoadingIndicator(show) {
+            var indicator = document.querySelector('.loading-indicator');
+            indicator.style.display = show ? 'block' : 'none';
+       
+        function toggleCanvasAndResults(show) {
+            document.getElementById('canvas').style.display = show ? 'block' : 'none';
+            document.getElementById('results').style.display = show ? 'block' : 'none';
+        }
+    </script>
+</body>
+</html>
